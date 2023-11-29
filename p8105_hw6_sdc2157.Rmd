@@ -125,6 +125,151 @@ cp_results_tidy |>
 
 
 # Problem 3
+there are no actual values of unknown for frace and no actual values of other for mrace so removed those from the fct levels
+no NA values present
+birthweight is a continuous outcome so use lm instead of glm
+
+going with model 4
+
+HOW TO USE ADD PREDICTIONS???
+```{r}
+birthweight_raw <- read_csv("data/birthweight.csv", col_names = TRUE)
+
+birthweight_clean <- birthweight_raw |> 
+  mutate(babysex = recode(
+    babysex,
+    "1" = "male",
+    "2" = "female"),
+    frace = recode(
+      frace,
+      "1" = "White",
+      "2" = "Black",
+      "3" = "Asian",
+      "4" = "Puerto Rican",
+      "8" = "Other",
+      "9" = "Unknown"),
+    mrace = recode(
+      mrace,
+      "1" = "White",
+      "2" = "Black",
+      "3" = "Asian",
+      "4" = "Puerto Rican",
+      "8" = "Other"),
+    malform = recode(
+      malform,
+      "0" = "absent",
+      "1" = "present")
+    ) |> 
+  mutate(
+    babysex = forcats::fct_relevel(babysex, c("male", "female")),
+    frace = forcats::fct_relevel(frace, c("White", "Black", "Asian", "Puerto Rican", "Other")),
+    mrace = forcats::fct_relevel(mrace, c("White", "Black", "Asian", "Puerto Rican")),
+    malform = forcats::fct_relevel(malform, c("absent", "present"))
+  )
+
+sum(is.na(birthweight_clean))
+
+str(birthweight_clean)
+
+fit_1 = lm(bwt ~ gaweeks, data = birthweight_clean)
+fit_1 |> 
+  broom::tidy()
+
+birthweight_clean |> 
+  ggplot(aes(x = gaweeks, y = bwt)) + 
+  geom_point()
+
+birthweight_clean |> 
+  modelr::add_residuals(fit_1) |> 
+  ggplot(aes(x = smoken, y = resid)) + geom_violin()
+
+
+fit_1 = lm(bwt ~ gaweeks, data = birthweight_clean)
+fit_2 = lm(bwt ~ gaweeks + bhead, data = birthweight_clean)
+fit_3 = lm(bwt ~ gaweeks + bhead + blength, data = birthweight_clean)
+
+fit_4 = lm(bwt ~ gaweeks + bhead + blength + babysex, data = birthweight_clean)
+fit_5 = lm(bwt ~ gaweeks + bhead + blength + malform, data = birthweight_clean)
+fit_6 = lm(bwt ~ gaweeks + bhead + blength + smoken, data = birthweight_clean)
+
+anova(fit_1, fit_2) |> 
+  broom::tidy()
+
+anova(fit_2, fit_3) |> 
+  broom::tidy()
+
+anova(fit_3, fit_4) |> 
+  broom::tidy()
+
+anova(fit_3, fit_5) |> 
+  broom::tidy()
+
+anova(fit_3, fit_6) |> 
+  broom::tidy()
+
+birthweight_clean |> 
+  modelr::add_residuals(fit_4) |> 
+  ggplot(aes(x = gaweeks, y = resid)) + geom_violin()
+
+birthweight_clean |> 
+  modelr::add_residuals(fit_4) |> 
+  ggplot(aes(x = bhead, y = resid)) + geom_violin()
+
+birthweight_clean |> 
+  modelr::add_residuals(fit_4) |> 
+  ggplot(aes(x = blength, y = resid)) + geom_violin()
+
+birthweight_clean |> 
+  modelr::add_residuals(fit_4) |> 
+  ggplot(aes(x = babysex, y = resid)) + geom_violin()
+
+
+fit_4 = lm(bwt ~ gaweeks + bhead + blength + babysex, data = birthweight_clean)
+fit_alt1 = lm(bwt ~ gaweeks + blength, data = birthweight_clean)
+fit_alt2 = lm(bwt ~ blength * bhead * babysex, data = birthweight_clean)
+
+fit_alt2 |> 
+  broom::tidy()
+
+birthweight_clean |> 
+  modelr::add_residuals(fit_alt1) |> 
+  ggplot(aes(x = gaweeks, y = resid)) + geom_violin()
+
+birthweight_clean |> 
+  modelr::add_residuals(fit_alt1) |> 
+  ggplot(aes(x = blength, y = resid)) + geom_violin()
+
+cv_df <-
+  crossv_mc(birthweight_clean, 100) |> 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+
+cv_df <-
+  cv_df |> 
+  mutate(
+    mod_alt1  = map(train, \(df) lm(bwt ~ gaweeks + bhead + blength + babysex, data = df)),
+    mod_alt2  = map(train, \(df) lm(bwt ~ gaweeks + blength, data = df)),
+    mod_alt3  = map(train, \(df) lm(bwt ~ blength*bhead*babysex, data = as_tibble(df)))) |> 
+  mutate(
+    rmse_alt1 = map2_dbl(mod_alt1, test, \(mod, df) rmse(model = mod, data = df)),
+    rmse_alt2 = map2_dbl(mod_alt2, test, \(mod, df) rmse(model = mod, data = df)),
+    rmse_alt3 = map2_dbl(mod_alt3, test, \(mod, df) rmse(model = mod, data = df)))
+
+
+cv_df |> 
+  select(rmse_alt1, rmse_alt2, rmse_alt3) |> 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") |> 
+  mutate(model = fct_inorder(model)) |> 
+  ggplot(aes(x = model, y = rmse)) + 
+  geom_violin()
+
+
+```
 
 
 
