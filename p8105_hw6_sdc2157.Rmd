@@ -180,14 +180,14 @@ cp_results_tidy |>
   nrow()
 
 cp_results_tidy |> 
-  filter(!log_coefficients_mult == "NaN") |> 
+  filter(log_coefficients_mult != "NaN") |> 
   ggplot(aes(x = log_coefficients_mult)) +
   geom_density()
 
 ```
 noted total number of NAs produced; filtered them out for the distribution
 
-log of product of coefficients distribution = centers around -5.5; What does this mean?
+log of product of coefficients distribution = centers around -5.5; What does this mean? left skew
 
 Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r̂ 2
  and log(β̂ 0∗β̂ 1)
@@ -255,25 +255,11 @@ sum(is.na(birthweight_clean))
 str(birthweight_clean)
 
 fit_1 = lm(bwt ~ gaweeks, data = birthweight_clean)
-fit_1 |> 
-  broom::tidy()
-
-birthweight_clean |> 
-  ggplot(aes(x = gaweeks, y = bwt)) + 
-  geom_point()
-
-birthweight_clean |> 
-  modelr::add_residuals(fit_1) |> 
-  ggplot(aes(x = smoken, y = resid)) + geom_violin()
-
-
-fit_1 = lm(bwt ~ gaweeks, data = birthweight_clean)
 fit_2 = lm(bwt ~ gaweeks + bhead, data = birthweight_clean)
 fit_3 = lm(bwt ~ gaweeks + bhead + blength, data = birthweight_clean)
 
 fit_4 = lm(bwt ~ gaweeks + bhead + blength + babysex, data = birthweight_clean)
 fit_5 = lm(bwt ~ gaweeks + bhead + blength + malform, data = birthweight_clean)
-fit_6 = lm(bwt ~ gaweeks + bhead + blength + smoken, data = birthweight_clean)
 
 anova(fit_1, fit_2) |> 
   broom::tidy()
@@ -287,27 +273,14 @@ anova(fit_3, fit_4) |>
 anova(fit_3, fit_5) |> 
   broom::tidy()
 
-anova(fit_3, fit_6) |> 
-  broom::tidy()
-
 birthweight_clean |> 
   modelr::add_residuals(fit_4) |> 
-  ggplot(aes(x = gaweeks, y = resid)) + geom_violin()
-
-birthweight_clean |> 
-  modelr::add_residuals(fit_4) |> 
-  ggplot(aes(x = bhead, y = resid)) + geom_violin()
-
-birthweight_clean |> 
-  modelr::add_residuals(fit_4) |> 
-  ggplot(aes(x = blength, y = resid)) + geom_violin()
-
-birthweight_clean |> 
-  modelr::add_residuals(fit_4) |> 
-  ggplot(aes(x = babysex, y = resid)) + geom_violin()
+  modelr::add_predictions(fit_4) |> 
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point()
 
 
-fit_4 = lm(bwt ~ gaweeks + bhead + blength + babysex, data = birthweight_clean)
+#fit_4 = lm(bwt ~ gaweeks + bhead + blength + babysex, data = birthweight_clean)
 fit_alt1 = lm(bwt ~ gaweeks + blength, data = birthweight_clean)
 fit_alt2 = lm(bwt ~ blength * bhead * babysex, data = birthweight_clean)
 
@@ -322,6 +295,19 @@ birthweight_clean |>
   modelr::add_residuals(fit_alt1) |> 
   ggplot(aes(x = blength, y = resid)) + geom_violin()
 
+birthweight_clean |> 
+  modelr::add_residuals(fit_alt2) |> 
+  ggplot(aes(x = blength, y = resid)) + geom_violin()
+
+birthweight_clean |> 
+  modelr::add_residuals(fit_alt2) |> 
+  ggplot(aes(x = bhead, y = resid)) + geom_violin()
+
+birthweight_clean |> 
+  modelr::add_residuals(fit_alt2) |> 
+  ggplot(aes(x = babysex, y = resid)) + geom_violin()
+
+
 cv_df <-
   crossv_mc(birthweight_clean, 100) |> 
   mutate(
@@ -333,7 +319,7 @@ cv_df <-
   mutate(
     mod_alt1  = map(train, \(df) lm(bwt ~ gaweeks + bhead + blength + babysex, data = df)),
     mod_alt2  = map(train, \(df) lm(bwt ~ gaweeks + blength, data = df)),
-    mod_alt3  = map(train, \(df) lm(bwt ~ blength*bhead*babysex, data = as_tibble(df)))) |> 
+    mod_alt3  = map(train, \(df) lm(bwt ~ blength * bhead * babysex, data = df))) |> 
   mutate(
     rmse_alt1 = map2_dbl(mod_alt1, test, \(mod, df) rmse(model = mod, data = df)),
     rmse_alt2 = map2_dbl(mod_alt2, test, \(mod, df) rmse(model = mod, data = df)),
@@ -353,7 +339,13 @@ cv_df |>
 
 
 ```
+choose alt1
 
+models they gave us just do lm.
+compare
+rmse
+
+predictions on x axis and resid on y axis; good b/c points center around 0 indicating a good fit; and there's no clear pattern so linear is ok
 
 
 
