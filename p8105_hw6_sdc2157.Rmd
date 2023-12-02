@@ -35,11 +35,8 @@ scale_fill_discrete = scale_fill_viridis_d
 ```
 
 # Problem 1
-Create a city_state variable (e.g. “Baltimore, MD”), and a binary variable indicating whether the homicide is solved. Omit cities Dallas, TX; Phoenix, AZ; and Kansas City, MO – these don’t report victim race. Also omit Tulsa, AL – this is a data entry mistake. For this problem, limit your analysis those for whom victim_race is white or black. Be sure that victim_age is numeric.
-
-closed by arrest (solved) is 1; unsolved (wihtout arrest, open) 0; wanted to make numeric and binary
-
-```{r}
+## Load and clean data
+```{r, load and clean homicide data, message = FALSE}
 homicide_raw <- read_csv("data/homicide-data.csv", col_names = TRUE, na = c("", "NA", "Unknown"))
 
 homicide_clean <- homicide_raw |> 
@@ -55,8 +52,15 @@ homicide_clean <- homicide_raw |>
 
 ```
 
-For the city of Baltimore, MD, use the glm function to fit a logistic regression with resolved vs unresolved as the outcome and victim age, sex and race as predictors. Save the output of glm as an R object; apply the broom::tidy to this object; and obtain the estimate and confidence interval of the adjusted odds ratio for solving homicides comparing male victims to female victims keeping all other variables fixed.
-```{r}
+The Washington Post gathered data on homicides in 50 large US cities to examine the number and characteristics of homicides that go solved vs unsolved. The variables in the dataset include city and state name, details about the victim (race, age, sex), and case status. 
+
+Note: We created a `resolved` variable where Closed by arrest = 1, Closed without arrest = 0, and Open/No arrest = 0.
+
+## Construct a logistic regression
+
+We constructed a logistic regression with our resolved variable as the outcome and predictors of victim age, sex, and race.
+
+```{r, baltimore analysis}
 baltimore_df <- homicide_clean |> 
   filter(city_state == "Baltimore, MD")
 
@@ -71,21 +75,20 @@ fit_baltimore |>
   select(term, OR, conf_low, conf_high, p.value) |> 
   knitr::kable(digits = 3)
   
-
 ```
-In Baltimore, cases in which the victim is male have a 0.426 lower odds of being solved compared to cases in which the victim is female.
-95% CI (0.324, 0.558)
 
-Now run glm for each of the cities in your dataset, and extract the adjusted odds ratio (and CI) for solving homicides comparing male victims to female victims. Do this within a “tidy” pipeline, making use of purrr::map, list columns, and unnest as necessary to create a dataframe with estimated ORs and CIs for each city.
+In Baltimore, the odds of solving a case in which the victim is male are 0.426 times lower than the odds of solving a case in which the victim is female. 95% CI (0.324, 0.558)
 
-```{r}
+
+```{r, cities analysis}
 homicide_nest_df <- homicide_clean |> 
   select(city_state, everything()) |> 
   nest(.data = _, data = uid:resolved)
 
 results <- homicide_nest_df |> 
   mutate(
-    models = map(data, \(df) glm(resolved ~ victim_age + victim_sex + victim_race, data = df, family = binomial())),
+    models = map(data, \(df) glm(resolved ~ victim_age + victim_sex + victim_race, data = df, 
+                                 family = binomial())),
     results = map(models, \(mod) broom::tidy(x = mod, conf.int = TRUE))
   ) |> 
   unnest(results) |> 
@@ -94,14 +97,18 @@ results <- homicide_nest_df |>
          conf_low = exp(log_conf_low),
          conf_high = exp(log_conf_high)) |> 
   select(city_state, term, OR, conf_low, conf_high) |> 
-  filter(term == "victim_sexMale") |> 
-  arrange(desc(OR))
+  filter(term == "victim_sexMale")
+
+results |> 
+  arrange(desc(OR)) |> 
+  filter(min_rank(desc(OR)) < 11) |> 
+  knitr::kable(digits = 3, caption = "Top 10 cities with highest adjusted OR for solving homicides comparing Male to Female victims")
 
 ```
+In Albuquerque, the odds of solving a case in which the victim is male are 1.77 times higher than the odds of solving a case in which the victim is female. 95% CI (0.825, 3.76)
 
-Create a plot that shows the estimated ORs and CIs for each city. Organize cities according to estimated OR, and comment on the plot.
 
-```{r}
+```{r, OR graph}
 results |> 
   mutate(city_state = forcats::fct_reorder(city_state, OR)) |> 
   ggplot(aes(x = city_state, y = OR)) +
@@ -120,9 +127,11 @@ results |>
 
 ```
 
+In New York City, cases in which the victim is male have the lowest odds of being solved compared to cases in which the victim is female. In contrast, in Albuquerque, cases in which the victim is male have the highest odds of being solved compared to cases in which the victim is female.
+
 # Problem 2
 ## Load Central Park Weather Data
-```{r}
+```{r, load and clean weather data, message = FALSE}
 cp_weather_df <-
   rnoaa::meteo_pull_monitors(
     c("USW00094728"),
@@ -136,12 +145,15 @@ cp_weather_df <-
   select(name, id, everything())
 
 ```
+This dataset captures the daily weather recorded in Central Park during 2022. Variables include daily maximum and minimum temperature as well as total daily precipitation. The dataset has `r nrow(cp_weather_df)` rows and `r ncol(cp_weather_df)` columns. 
 
-strap (ie our bootstrap sample)
+## Bootstrap
 
-Use 5000 bootstrap samples and, for each bootstrap sample, produce estimates of these two quantities. Plot the distribution of your estimates, and describe these in words
+We generated 5000 bootstrap samples and fit our simple linear regression for tmax to each sample.
 
-```{r}
+Note: `strap` (i.e. our bootstrap sample)
+
+```{r, bootstrap, message = FALSE}
 cp_results <- cp_weather_df |> 
   modelr::bootstrap(n = 5000) |> 
   mutate(
@@ -162,37 +174,39 @@ cp_results_tidy <- cp_results |>
   mutate(log_coefficients_mult = log(tmin * prcp))
 
 ```
-for each model, we have an r.squared value, an intercept, tmin, prcp, and log_coefficients_mult
+For each sample, we produced estimates for r.squared, the intercept, tmin (beta1), prcp (beta2), and log_coefficients_mult (log of beta1 * beta2).
 
-r^2 distribution
-```{r}
+## r.squared distribution
+```{r, r squared distribution}
 cp_results_tidy |> 
   ggplot(aes(x = r.squared)) +
-  geom_density()
+  geom_density() +
+  labs(
+    title = "R.squared distribution "
+  ) 
 
 ```
 
-r^2 distribution = partially left skewed. centers around 0.92. about 92% of the variation in tmax can be explained by the linear relationship between tmax and tmin + prcp
+The distribution of r.squared is slightly left skewed and centers around 0.92. This indicates that, on average, about 92% of the variation in tmax can be explained by the linear relationship between tmax and tmin + prcp.
 
-```{r}
-cp_results_tidy |> 
-  filter(log_coefficients_mult == "NaN") |> 
-  nrow()
-
+## log(beta1 * beta2) distribution
+```{r, log betas distribution}
 cp_results_tidy |> 
   filter(log_coefficients_mult != "NaN") |> 
   ggplot(aes(x = log_coefficients_mult)) +
-  geom_density()
+  geom_density() +
+  labs(
+    title = "log(beta1 * beta2) distribution "
+  ) 
 
 ```
-noted total number of NAs produced; filtered them out for the distribution
 
-log of product of coefficients distribution = centers around -5.5; What does this mean? left skew
+In calculating log_coefficients_mult (log of beta1 * beta2), `r cp_results_tidy |> filter(log_coefficients_mult == "NaN") |>  nrow()` NA values were produced. Since negative values for prcp are present and you cannot take the log of a negative value, NAs were produced.
 
-Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r̂ 2
- and log(β̂ 0∗β̂ 1)
-. 
-```{r}
+NA values were filtered out in order to construct the distribution of log(beta1 * beta2). The distribution is left skewed and centers around -5.5
+
+## Construct 95% Confidence Intervals
+```{r, CIs}
 cp_results_tidy |> 
   select(r.squared, log_coefficients_mult) |> 
   pivot_longer(
@@ -203,19 +217,17 @@ cp_results_tidy |>
   group_by(term) |> 
   summarize(
     ci_lower = quantile(estimate, 0.025, na.rm = TRUE),
-    ci_upper = quantile(estimate, 0.975, na.rm = TRUE))
-```
+    ci_upper = quantile(estimate, 0.975, na.rm = TRUE)) |>
+  knitr::kable(digits = 2, caption = "95% Confidence Intervals")
 
+```
+We are 95% confident that the true value of log(beta1 * beta2) lies between -8.98 and -4.60.
+
+We are 95% confident that the true value of r.squared lies between 0.89 and 0.94.
 
 # Problem 3
-there are no actual values of unknown for frace and no actual values of other for mrace so removed those from the fct levels
-no NA values present
-birthweight is a continuous outcome so use lm instead of glm
-
-going with model 4
-
-HOW TO USE ADD PREDICTIONS???
-```{r}
+## Load and clean birthweight data
+```{r, load and clean birthweight data, message = FALSE}
 birthweight_raw <- read_csv("data/birthweight.csv", col_names = TRUE)
 
 birthweight_clean <- birthweight_raw |> 
@@ -250,10 +262,17 @@ birthweight_clean <- birthweight_raw |>
     malform = forcats::fct_relevel(malform, c("absent", "present"))
   )
 
-sum(is.na(birthweight_clean))
+```
 
-str(birthweight_clean)
+The birthweight dataset includes data about `r nrow(birthweight_clean)` children. The dataset has `r nrow(birthweight_clean)` rows and `r ncol(birthweight_clean)` columns. Examples of variables include sex of the baby, gestational age of the baby at birth, weight of the baby at birth, and monthly income of the family.
 
+No actual values were recorded for Unknown within the `frace` variable, so Unknown was not included in the factor releveling. Similarly, no actual values were recorded for Other within the `mrace` variables, so Other was not included in the factor releveling. There were `r sum(is.na(birthweight_clean))` NA values present in our cleaned dataset.
+
+## Construct a regression model for birthweight
+
+Next, we created a model to understand which variables may influence a child's birthweight. Since birthweight is a continuous outcome, we started by constructing linear models using lm.
+
+```{r, construct a model}
 fit_1 = lm(bwt ~ gaweeks, data = birthweight_clean)
 fit_2 = lm(bwt ~ gaweeks + bhead, data = birthweight_clean)
 fit_3 = lm(bwt ~ gaweeks + bhead + blength, data = birthweight_clean)
@@ -272,42 +291,58 @@ anova(fit_3, fit_4) |>
 
 anova(fit_3, fit_5) |> 
   broom::tidy()
+```
+The first model employs only `gaweeks`. For the next model, we added `bhead` and ran an anova to assess the significance of the additional predictor. We repeated this process of adding a predictor and running an anova. The fifth model did not produce significant results. 
 
+We decided to use the fourth model using the predictors `gaweeks` (gestational age), `bhead` (baby's head circumference at birth), `blength` (length of baby at birth), and `babysex` (baby's sex). When model 4 was compared to model 3, the anova produced a p-value of 0.000158, indicating `babysex` to be a significant additional predictor. Most of the selected variables are aspects related to the baby's size which could reasonably be suspected to contribute to a baby's weight. 
+
+## Plot of model residuals against fitted values
+```{r, resid graph for our model}
 birthweight_clean |> 
   modelr::add_residuals(fit_4) |> 
   modelr::add_predictions(fit_4) |> 
   ggplot(aes(x = pred, y = resid)) + 
-  geom_point()
+  geom_point() +
+  labs(
+    title = "Model 4: Residuals against fitted values "
+  ) 
 
+```
 
-#fit_4 = lm(bwt ~ gaweeks + bhead + blength + babysex, data = birthweight_clean)
-fit_alt1 = lm(bwt ~ gaweeks + blength, data = birthweight_clean)
-fit_alt2 = lm(bwt ~ blength * bhead * babysex, data = birthweight_clean)
+Our proposed linear model of `lm(bwt ~ gaweeks + bhead + blength + babysex` appears to be an appropriate fit for these data. The points center around 0, indicating that the model is a good fit. In addition, the points are not arranged in a clear pattern, indicating a linear model to be suitable.
 
-fit_alt2 |> 
-  broom::tidy()
+# Cross Validation
 
-birthweight_clean |> 
-  modelr::add_residuals(fit_alt1) |> 
-  ggplot(aes(x = gaweeks, y = resid)) + geom_violin()
+We compared our model to two other models in terms of the cross-validated prediction error.
 
-birthweight_clean |> 
-  modelr::add_residuals(fit_alt1) |> 
-  ggplot(aes(x = blength, y = resid)) + geom_violin()
+First, we checked that the two alternative models were suitable options for the data by graphing the residuals against the fitted values. Both linear models were appropriate. 
 
-birthweight_clean |> 
-  modelr::add_residuals(fit_alt2) |> 
-  ggplot(aes(x = blength, y = resid)) + geom_violin()
+```{r, check resid of alt models}
+fit_alt = lm(bwt ~ blength + gaweeks, data = birthweight_clean)
+fit_alt_int = lm(bwt ~ bhead * blength * babysex, data = birthweight_clean)
 
 birthweight_clean |> 
-  modelr::add_residuals(fit_alt2) |> 
-  ggplot(aes(x = bhead, y = resid)) + geom_violin()
+  modelr::add_residuals(fit_alt) |> 
+  modelr::add_predictions(fit_alt) |> 
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point() +
+  labs(
+    title = "Fit_alt: Residuals against fitted values "
+  ) 
 
 birthweight_clean |> 
-  modelr::add_residuals(fit_alt2) |> 
-  ggplot(aes(x = babysex, y = resid)) + geom_violin()
+  modelr::add_residuals(fit_alt_int) |> 
+  modelr::add_predictions(fit_alt_int) |> 
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point() +
+  labs(
+    title = "Fit_alt_int: Residuals against fitted values "
+  ) 
+
+```
 
 
+```{r, graph rmse}
 cv_df <-
   crossv_mc(birthweight_clean, 100) |> 
   mutate(
@@ -318,13 +353,12 @@ cv_df <-
   cv_df |> 
   mutate(
     mod_alt1  = map(train, \(df) lm(bwt ~ gaweeks + bhead + blength + babysex, data = df)),
-    mod_alt2  = map(train, \(df) lm(bwt ~ gaweeks + blength, data = df)),
-    mod_alt3  = map(train, \(df) lm(bwt ~ blength * bhead * babysex, data = df))) |> 
+    mod_alt2  = map(train, \(df) lm(bwt ~ blength + gaweeks, data = df)),
+    mod_alt3  = map(train, \(df) lm(bwt ~ bhead * blength * babysex, data = df))) |> 
   mutate(
     rmse_alt1 = map2_dbl(mod_alt1, test, \(mod, df) rmse(model = mod, data = df)),
     rmse_alt2 = map2_dbl(mod_alt2, test, \(mod, df) rmse(model = mod, data = df)),
     rmse_alt3 = map2_dbl(mod_alt3, test, \(mod, df) rmse(model = mod, data = df)))
-
 
 cv_df |> 
   select(rmse_alt1, rmse_alt2, rmse_alt3) |> 
@@ -335,17 +369,33 @@ cv_df |>
     names_prefix = "rmse_") |> 
   mutate(model = fct_inorder(model)) |> 
   ggplot(aes(x = model, y = rmse)) + 
-  geom_violin()
-
+  geom_violin() +
+  labs(
+    title = "Distribution of rmse for each model "
+  ) 
 
 ```
-choose alt1
 
-models they gave us just do lm.
-compare
-rmse
+The distribution of the cross-prediction error (rmse) is similar for the first and third model.
 
-predictions on x axis and resid on y axis; good b/c points center around 0 indicating a good fit; and there's no clear pattern so linear is ok
+```{r, avg rmse}
+cv_df |> 
+  select(rmse_alt1, rmse_alt2, rmse_alt3) |> 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") |> 
+  group_by(model) |> 
+  summarize(mean_rmse = mean(rmse)) |> 
+  knitr::kable(digits = 2, caption = "Mean rmse for each model")
+
+```
+
+When calculating the mean rmse for each model, the mean rmse for the first model is slightly lower than that of the third model. Thus, we recommend using the first model, which is our proposed model: `lm(bwt ~ gaweeks + bhead + blength + babysex`.
+
+
+
 
 
 
