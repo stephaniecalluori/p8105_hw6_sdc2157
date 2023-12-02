@@ -266,7 +266,7 @@ birthweight_clean <- birthweight_raw |>
 
 The birthweight dataset includes data about `r nrow(birthweight_clean)` children. The dataset has `r nrow(birthweight_clean)` rows and `r ncol(birthweight_clean)` columns. Examples of variables include sex of the baby, gestational age of the baby at birth, weight of the baby at birth, and monthly income of the family.
 
-No actual values were recorded for Unknown within the `frace` variable, so Unknown was not included in the factor releveling. Similarly, no actual values were recorded for Other within the `mrace` variables, so Other was not included in the factor releveling. There were `r sum(is.na(birthweight_clean))` NA values present in our cleaned dataset.
+No actual values were recorded for Unknown within the `frace` variable, so Unknown was not included in the factor releveling. Similarly, no actual values were recorded for Other within the `mrace` variable, so Other was not included in the factor releveling. There were `r sum(is.na(birthweight_clean))` NA values present in our cleaned dataset.
 
 ## Construct a regression model for birthweight
 
